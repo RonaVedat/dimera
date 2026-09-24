@@ -39,12 +39,16 @@ func parseAmount(_ text: String) -> Decimal? {
 /// One-tap category chips in a wrapping grid — no dropdown, no submenu.
 struct CategoryChips: View {
     @Binding var selection: TransactionCategory
+    /// Categories to leave out entirely — used by Add Budget to hide
+    /// categories that already have one, since a budget is one-per-category.
+    /// Empty by default, so every other call site is unaffected.
+    var excluding: Set<TransactionCategory> = []
 
     private let columns = [GridItem(.adaptive(minimum: 104), spacing: 8)]
 
     var body: some View {
         LazyVGrid(columns: columns, spacing: 8) {
-            ForEach(TransactionCategory.allCases) { category in
+            ForEach(TransactionCategory.allCases.filter { !excluding.contains($0) }) { category in
                 let isSelected = category == selection
                 Button {
                     Haptics.selection()

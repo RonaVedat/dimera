@@ -23,10 +23,6 @@ struct RemindersSettingsView: View {
     @AppStorage(ReminderSettingsKey.quietHoursStartHour) private var quietHoursStartHour = ReminderSettingsKey.defaultQuietHoursStart
     @AppStorage(ReminderSettingsKey.quietHoursEndHour) private var quietHoursEndHour = ReminderSettingsKey.defaultQuietHoursEnd
 
-    @AppStorage(ReminderSettingsKey.spendingAlertEnabled) private var spendingAlertEnabled = false
-    @AppStorage(ReminderSettingsKey.spendingAlertCategory) private var spendingAlertCategory = ""
-    @AppStorage(ReminderSettingsKey.spendingAlertThresholdAmount) private var spendingAlertThresholdAmount = 0.0
-
     @State private var showPermissionDeniedAlert = false
 
     /// Built from `AppLanguage.current.locale`, not bare `Calendar.current`
@@ -43,7 +39,6 @@ struct RemindersSettingsView: View {
         List {
             routineSection
             contractsSection
-            spendingAlertSection
             quietHoursSection
         }
         .listStyle(.insetGrouped)
@@ -139,28 +134,6 @@ struct RemindersSettingsView: View {
         } footer: {
             let leadTime = ReminderLeadTime(rawValue: renewalLeadTimeDays) ?? .oneDay
             Text("A reminder \(leadTime.title) anything in Upcoming is due — bills and paychecks alike.")
-        }
-    }
-
-    // MARK: - Spending Alert
-
-    private var spendingAlertSection: some View {
-        Section {
-            Toggle("Spending Alert", isOn: Binding(
-                get: { spendingAlertEnabled },
-                set: { enable($0, binding: $spendingAlertEnabled) {} }
-            ))
-            .tint(MonetaColor.accent)
-            .disabled(spendingAlertCategory.isEmpty)
-        } header: {
-            Text("Spending Alert")
-        } footer: {
-            if spendingAlertCategory.isEmpty {
-                Text("Set a limit from the Insights tab to turn this on.")
-            } else {
-                let categoryName = TransactionCategory(rawValue: spendingAlertCategory)?.title ?? spendingAlertCategory
-                Text("Notifies you once if \(categoryName) spending crosses \(Currency.string(Decimal(spendingAlertThresholdAmount))) this month.")
-            }
         }
     }
 

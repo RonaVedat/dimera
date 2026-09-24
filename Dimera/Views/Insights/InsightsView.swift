@@ -7,9 +7,10 @@ struct InsightsView: View {
     @EnvironmentObject private var store: FinanceStore
     @AppStorage("isPremium") private var isPremium = false
     @State private var barsAppeared = false
-    @State private var showSpendingAlertSheet = false
-    @State private var alertCategory: TransactionCategory = .other
-    @State private var alertPrefill: Decimal = 0
+    @State private var showAddBudgetSheet = false
+    @State private var addBudgetCategory: TransactionCategory = .other
+    @State private var addBudgetPrefill: Decimal = 0
+    @State private var editingBudgetFromInsight: Budget?
     @State private var showTaxExport = false
     @State private var showTaxExportPaywall = false
 
@@ -19,6 +20,11 @@ struct InsightsView: View {
                 VStack(alignment: .leading, spacing: 0) {
                     spendingCard
                         .padding(.top, 4)
+
+                    SectionLabel(title: String.localized("Budgets"))
+                        .padding(.top, 28)
+                        .padding(.bottom, 10)
+                    BudgetsSection()
 
                     SectionLabel(title: String.localized("Commitments"))
                         .padding(.top, 28)
@@ -54,8 +60,14 @@ struct InsightsView: View {
                     barsAppeared = true
                 }
             }
-            .sheet(isPresented: $showSpendingAlertSheet) {
-                SpendingAlertSheet(category: alertCategory, prefillThreshold: alertPrefill)
+            .sheet(isPresented: $showAddBudgetSheet) {
+                AddBudgetSheet(
+                    excludedCategories: Set(store.budgets.compactMap { TransactionCategory(rawValue: $0.category) }),
+                    initialCategory: addBudgetCategory, prefillLimit: addBudgetPrefill
+                )
+            }
+            .sheet(item: $editingBudgetFromInsight) { budget in
+                EditBudgetSheet(budget: budget)
             }
             .sheet(isPresented: $showTaxExport) {
                 TaxExportChoiceView()
@@ -120,9 +132,15 @@ struct InsightsView: View {
 
                 Button {
                     Haptics.selection()
-                    alertCategory = TransactionCategory(rawValue: insight.recommendationCategory) ?? .other
-                    alertPrefill = max(0, store.categorySpend(for: insight.recommendationCategory) - 50)
-                    showSpendingAlertSheet = true
+                    // Already budgeted? Open that budget instead of a second
+                    // one for the same category — a budget is one-per-category.
+                    if let existing = store.budgets.first(where: { $0.category == insight.recommendationCategory }) {
+                        editingBudgetFromInsight = existing
+                    } else {
+                        addBudgetCategory = TransactionCategory(rawValue: insight.recommendationCategory) ?? .other
+                        addBudgetPrefill = max(0, store.categorySpend(for: insight.recommendationCategory) - 50)
+                        showAddBudgetSheet = true
+                    }
                 } label: {
                     Text("Set a \(recommendationCategoryName) limit")
                         .font(.subheadline.weight(.semibold))

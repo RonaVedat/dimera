@@ -8,9 +8,9 @@ import Foundation
 /// - **Daily Spending Review** — a repeating daily nudge to log today's
 ///   activity, at a time you set.
 /// - **Weekly Financial Digest** — a repeating weekly recap, on a day you set.
-/// - **Spending alert** — a lightweight, event-driven nudge the moment a
-///   category's spend crosses a threshold you set. Not a budget: no cap,
-///   no enforcement, no rollover, just a one-time notice.
+/// - **Budget alert** — a lightweight, event-driven nudge the moment a
+///   budgeted category's spend crosses its monthly limit, fired at most
+///   once per budget per month.
 ///
 /// Quiet Hours delays the two *routine* reminders (never the time-sensitive
 /// renewal ones) rather than dropping them, and a lightweight same-minute
@@ -171,27 +171,25 @@ final class NotificationScheduler {
         }
     }
 
-    // MARK: - Spending alert
+    // MARK: - Budget alert
 
-    private static let spendingAlertID = "moneta.spendingAlert"
+    private static func budgetAlertID(for budgetID: UUID) -> String {
+        "dimera.budgetAlert.\(budgetID.uuidString)"
+    }
 
     /// The one event-driven reminder in this file — everything else above
     /// is calendar-scheduled ahead of time; this fires in direct response
-    /// to a transaction crossing a threshold, checked by `FinanceStore`
-    /// right after a spend is logged. Fires at most once per calendar
-    /// month per category, guarded by `spendingAlertLastFiredMonth`, so a
-    /// second qualifying expense doesn't re-notify.
-    func checkSpendingAlert(category: String, currentTotal: Decimal, threshold: Decimal) {
-        guard defaults.bool(forKey: ReminderSettingsKey.spendingAlertEnabled),
-              defaults.string(forKey: ReminderSettingsKey.spendingAlertCategory) == category,
-              threshold > 0, currentTotal >= threshold else { return }
-
-        let monthKey = Self.monthKey(for: Date())
-        guard defaults.string(forKey: ReminderSettingsKey.spendingAlertLastFiredMonth) != monthKey else { return }
-
+    /// to a transaction crossing a budget's limit, checked by
+    /// `FinanceStore` right after a spend is logged. `FinanceStore` owns
+    /// the "already alerted this month" guard (per-budget, via
+    /// `Budget.lastAlertedMonth`, since there can be several budgets each
+    /// tracking their own state) — this only ever fires once actually
+    /// asked to. A per-budget identifier means several budgets crossing
+    /// their limit in the same month each get their own notification,
+    /// unlike the old single-category Spending Alert this replaced.
+    func checkBudgetAlert(budgetID: UUID, category: String, currentTotal: Decimal, limit: Decimal) {
         Task {
             guard await hasPermission() else { return }
-            defaults.set(monthKey, forKey: ReminderSettingsKey.spendingAlertLastFiredMonth)
 
             // `category` is the raw stored key (TransactionCategory.rawValue,
             // always English) — mapped to its localized display name for
@@ -199,19 +197,26 @@ final class NotificationScheduler {
             let categoryName = TransactionCategory(rawValue: category)?.title ?? category
 
             let content = UNMutableNotificationContent()
-            content.title = String.localized("\(categoryName) limit reached")
-            content.body = String.localized("You've spent \(Currency.string(currentTotal)) on \(categoryName) this month — your limit was \(Currency.string(threshold)).")
+            content.title = String.localized("\(categoryName) budget exceeded")
+            content.body = String.localized("You've spent \(Currency.string(currentTotal)) of your \(Currency.string(limit)) \(categoryName) budget this month.")
             content.sound = .default
 
             try? await center.add(UNNotificationRequest(
-                identifier: Self.spendingAlertID,
+                identifier: Self.budgetAlertID(for: budgetID),
                 content: content,
                 trigger: UNTimeIntervalNotificationTrigger(timeInterval: 1, repeats: false)
             ))
         }
     }
 
-    private static func monthKey(for date: Date) -> String {
+    /// Called when a budget is deleted, so a stale alert can't linger.
+    func cancelBudgetAlert(budgetID: UUID) {
+        let id = Self.budgetAlertID(for: budgetID)
+        center.removePendingNotificationRequests(withIdentifiers: [id])
+        center.removeDeliveredNotifications(withIdentifiers: [id])
+    }
+
+    static func monthKey(for date: Date) -> String {
         let components = Calendar.current.dateComponents([.year, .month], from: date)
         return "\(components.year ?? 0)-\(components.month ?? 0)"
     }

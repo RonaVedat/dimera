@@ -18,6 +18,7 @@ final class FinanceStore: ObservableObject {
     @Published private(set) var transactions: [Transaction] = []
     @Published private(set) var recurring: [RecurringEntry] = []
     @Published private(set) var goals: [Goal] = []
+    @Published private(set) var budgets: [Budget] = []
 
     @Published private(set) var isLoading = false
     @Published private(set) var loadError: String?
@@ -100,6 +101,7 @@ final class FinanceStore: ObservableObject {
                 self.transactions = ledger.transactions
                 self.recurring = ledger.recurring
                 self.goals = ledger.goals
+                self.budgets = ledger.budgets
                 rebuildFlatHistory()
             } else if let snapshot = FinancialSnapshotStorage.current {
                 // Onboarding finished in a previous run but nothing's been
@@ -159,6 +161,7 @@ final class FinanceStore: ObservableObject {
         transactions = []
         recurring = []
         goals = []
+        budgets = []
 
         rebuildFlatHistory()
     }
@@ -190,7 +193,7 @@ final class FinanceStore: ObservableObject {
         let transaction = Transaction(id: id, merchant: merchant, category: category, amount: amount, date: date, isIncome: false, hasReceipt: hasReceipt)
         insert(transaction)
         applyCashDelta(-amount)
-        checkSpendingAlertIfNeeded()
+        checkBudgetAlertsIfNeeded()
         persistLedger()
         return transaction
     }
@@ -231,6 +234,15 @@ final class FinanceStore: ObservableObject {
             name: name, targetAmount: targetAmount, monthlyContribution: monthlyContribution,
             trackingMode: trackingMode, linkedAssetID: linkedAssetID, manualCurrentAmount: manualCurrentAmount
         ))
+        persistLedger()
+    }
+
+    /// One budget per category — callers (`AddBudgetSheet`) are expected to
+    /// exclude categories already budgeted, but this doesn't re-enforce
+    /// that itself; editing an existing category's limit goes through
+    /// `updateBudget`, not a second `addBudget`.
+    func addBudget(category: String, monthlyLimit: Decimal, alertsEnabled: Bool = true) {
+        budgets.append(Budget(category: category, monthlyLimit: monthlyLimit, alertsEnabled: alertsEnabled))
         persistLedger()
     }
 
@@ -306,7 +318,7 @@ final class FinanceStore: ObservableObject {
         let reverseOld = old.isIncome ? -old.amount : old.amount
         let applyNew = transaction.isIncome ? amount : -amount
         applyCashDelta(reverseOld + applyNew)
-        checkSpendingAlertIfNeeded()
+        checkBudgetAlertsIfNeeded()
         persistLedger()
     }
 
@@ -341,6 +353,13 @@ final class FinanceStore: ObservableObject {
         goals[index].trackingMode = trackingMode
         goals[index].linkedAssetID = linkedAssetID
         goals[index].manualCurrentAmount = manualCurrentAmount
+        persistLedger()
+    }
+
+    func updateBudget(_ budget: Budget, monthlyLimit: Decimal, alertsEnabled: Bool) {
+        guard let index = budgets.firstIndex(where: { $0.id == budget.id }) else { return }
+        budgets[index].monthlyLimit = monthlyLimit
+        budgets[index].alertsEnabled = alertsEnabled
         persistLedger()
     }
 
@@ -458,6 +477,12 @@ final class FinanceStore: ObservableObject {
         persistLedger()
     }
 
+    func deleteBudget(_ budget: Budget) {
+        budgets.removeAll { $0.id == budget.id }
+        NotificationScheduler.shared.cancelBudgetAlert(budgetID: budget.id)
+        persistLedger()
+    }
+
     func deleteLiability(_ liability: Liability) {
         guard let index = liabilities.firstIndex(where: { $0.id == liability.id }) else { return }
         liabilities.remove(at: index)
@@ -512,17 +537,29 @@ final class FinanceStore: ObservableObject {
         LedgerStorage.current = Ledger(
             cash: overview.cash, monthDelta: overview.monthDelta,
             assets: assets, liabilities: liabilities, transactions: transactions,
-            recurring: recurring, goals: goals
+            recurring: recurring, goals: goals, budgets: budgets
         )
     }
 
     /// Checked after every expense add/edit — event-driven, not scheduled.
-    /// A no-op unless the user has set a limit for this exact category.
-    private func checkSpendingAlertIfNeeded() {
-        let defaults = UserDefaults.standard
-        guard let category = defaults.string(forKey: ReminderSettingsKey.spendingAlertCategory), !category.isEmpty else { return }
-        let threshold = Decimal(defaults.double(forKey: ReminderSettingsKey.spendingAlertThresholdAmount))
-        NotificationScheduler.shared.checkSpendingAlert(category: category, currentTotal: categoryTotal(category, in: Date()), threshold: threshold)
+    /// A no-op unless a budget exists for that exact category. Each budget
+    /// tracks its own `lastAlertedMonth`, so several can independently
+    /// cross their limit in the same month without stepping on each other
+    /// (the old single-category Spending Alert this replaced could only
+    /// ever track one at a time).
+    private func checkBudgetAlertsIfNeeded() {
+        for budget in budgets where budget.alertsEnabled {
+            let spend = categoryTotal(budget.category, in: Date())
+            guard spend >= budget.monthlyLimit else { continue }
+            let monthKey = NotificationScheduler.monthKey(for: Date())
+            guard budget.lastAlertedMonth != monthKey else { continue }
+            NotificationScheduler.shared.checkBudgetAlert(
+                budgetID: budget.id, category: budget.category, currentTotal: spend, limit: budget.monthlyLimit
+            )
+            if let index = budgets.firstIndex(where: { $0.id == budget.id }) {
+                budgets[index].lastAlertedMonth = monthKey
+            }
+        }
     }
 
     // MARK: - Derived reads
@@ -535,6 +572,26 @@ final class FinanceStore: ObservableObject {
     /// the "Set a [category] limit" sheet.
     func categorySpend(for category: String, month: Date = Date()) -> Decimal {
         categoryTotal(category, in: month)
+    }
+
+    func budgetSpend(for budget: Budget, month: Date = Date()) -> Decimal {
+        categorySpend(for: budget.category, month: month)
+    }
+
+    /// Deliberately **not** capped at 1.0, unlike `progress(for goal:)` —
+    /// a budget needs to express "34% over," not just "done." Views clamp
+    /// their own visual fill separately.
+    func budgetProgress(for budget: Budget, month: Date = Date()) -> Double {
+        guard budget.monthlyLimit > 0 else { return 0 }
+        let spend = budgetSpend(for: budget, month: month)
+        return NSDecimalNumber(decimal: spend / budget.monthlyLimit).doubleValue
+    }
+
+    func budgetStatus(for budget: Budget, month: Date = Date()) -> BudgetStatus {
+        let progress = budgetProgress(for: budget, month: month)
+        if progress >= 1.0 { return .overBudget }
+        if progress >= 0.8 { return .nearLimit }
+        return .onTrack
     }
 
     var upcoming: [RecurringEntry] {

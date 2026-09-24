@@ -48,13 +48,6 @@ enum ReminderSettingsKey {
     static let quietHoursStartHour = "quietHoursStartHour"
     static let quietHoursEndHour = "quietHoursEndHour"
 
-    // A lightweight, event-driven alert — not a budget: no cap, no
-    // enforcement, no rollover, just "notify me once if I cross this."
-    static let spendingAlertEnabled = "spendingAlertEnabled"
-    static let spendingAlertCategory = "spendingAlertCategory"               // TransactionCategory.rawValue
-    static let spendingAlertThresholdAmount = "spendingAlertThresholdAmount" // Double
-    static let spendingAlertLastFiredMonth = "spendingAlertLastFiredMonth"   // "yyyy-M" guard, self-resets each month
-
     // Sensible, opinionated defaults — evening for a same-day recap, Sunday
     // morning for a week-in-review, business hours for anything you might
     // need to act on.

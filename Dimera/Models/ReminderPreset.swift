@@ -4,9 +4,9 @@ import Foundation
 /// configures the entire Reminders system at once, rather than making
 /// someone answer four separate questions in Settings. Each tier maps onto
 /// the reminder types that actually exist and fire (`ReminderSettingsKey`/
-/// `NotificationScheduler`) — no fabricated "budget" or "goal" categories,
-/// since this app deliberately has no budgets and Goals has no live data
-/// to alert on yet.
+/// `NotificationScheduler`) — no fabricated "goal" category, since Goals
+/// has no live data to alert on yet. Budget alerts are set per-budget from
+/// the Budgets section itself, not one of these presets.
 enum ReminderPreset: String, CaseIterable, Identifiable {
     case minimal, balanced, pro
 
