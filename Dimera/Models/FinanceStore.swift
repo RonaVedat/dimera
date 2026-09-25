@@ -19,6 +19,7 @@ final class FinanceStore: ObservableObject {
     @Published private(set) var recurring: [RecurringEntry] = []
     @Published private(set) var goals: [Goal] = []
     @Published private(set) var budgets: [Budget] = []
+    @Published private(set) var balanceChangeLog: [BalanceChangeEvent] = []
 
     @Published private(set) var isLoading = false
     @Published private(set) var loadError: String?
@@ -102,6 +103,7 @@ final class FinanceStore: ObservableObject {
                 self.recurring = ledger.recurring
                 self.goals = ledger.goals
                 self.budgets = ledger.budgets
+                self.balanceChangeLog = ledger.balanceChangeLog
                 rebuildFlatHistory()
             } else if let snapshot = FinancialSnapshotStorage.current {
                 // Onboarding finished in a previous run but nothing's been
@@ -162,6 +164,7 @@ final class FinanceStore: ObservableObject {
         recurring = []
         goals = []
         budgets = []
+        balanceChangeLog = []
 
         rebuildFlatHistory()
     }
@@ -213,13 +216,13 @@ final class FinanceStore: ObservableObject {
 
     func addAsset(name: String, value: Decimal, kind: AssetKind) {
         assets.append(Asset(name: name, value: value, kind: kind))
-        registerNetWorthChange(value)
+        registerNetWorthChange(value, label: name, kind: .assetAdded)
         persistLedger()
     }
 
     func addLiability(name: String, amount: Decimal, monthlyPayment: Decimal?) {
         liabilities.append(Liability(name: name, amount: amount, monthlyPayment: monthlyPayment))
-        registerNetWorthChange(-amount)
+        registerNetWorthChange(-amount, label: name, kind: .liabilityAdded)
         persistLedger()
     }
 
@@ -328,7 +331,7 @@ final class FinanceStore: ObservableObject {
         assets[index].name = name
         assets[index].value = value
         assets[index].kind = kind
-        registerNetWorthChange(delta)
+        registerNetWorthChange(delta, label: name, kind: .assetChanged)
         persistLedger()
     }
 
@@ -338,7 +341,7 @@ final class FinanceStore: ObservableObject {
         liabilities[index].name = name
         liabilities[index].amount = amount
         liabilities[index].monthlyPayment = monthlyPayment
-        registerNetWorthChange(delta)
+        registerNetWorthChange(delta, label: name, kind: .liabilityChanged)
         persistLedger()
     }
 
@@ -468,7 +471,7 @@ final class FinanceStore: ObservableObject {
             goals[i].linkedAssetID = nil
         }
         assets.remove(at: index)
-        registerNetWorthChange(-asset.value)
+        registerNetWorthChange(-asset.value, label: asset.name, kind: .assetRemoved)
         persistLedger()
     }
 
@@ -486,7 +489,7 @@ final class FinanceStore: ObservableObject {
     func deleteLiability(_ liability: Liability) {
         guard let index = liabilities.firstIndex(where: { $0.id == liability.id }) else { return }
         liabilities.remove(at: index)
-        registerNetWorthChange(liability.amount)
+        registerNetWorthChange(liability.amount, label: liability.name, kind: .liabilityRemoved)
         persistLedger()
     }
 
@@ -510,9 +513,15 @@ final class FinanceStore: ObservableObject {
         syncHistoryEndpoint()
     }
 
-    /// Asset/liability changes move net worth but not cash.
-    private func registerNetWorthChange(_ delta: Decimal) {
+    /// Asset/liability changes move net worth but not cash — and unlike a
+    /// real transaction, there was previously no record of *when* one of
+    /// these happened, only the resulting current value. Logging it here,
+    /// in the one place every asset/liability mutation already funnels
+    /// through, is what lets "Why did this change?" tell a balance-sheet
+    /// event apart from an ordinary bad spending month.
+    private func registerNetWorthChange(_ delta: Decimal, label: String, kind: BalanceChangeEvent.Kind) {
         overview = FinanceOverview(cash: overview.cash, monthDelta: overview.monthDelta + delta)
+        balanceChangeLog.append(BalanceChangeEvent(label: label, kind: kind, delta: delta))
         syncHistoryEndpoint()
     }
 
@@ -537,7 +546,7 @@ final class FinanceStore: ObservableObject {
         LedgerStorage.current = Ledger(
             cash: overview.cash, monthDelta: overview.monthDelta,
             assets: assets, liabilities: liabilities, transactions: transactions,
-            recurring: recurring, goals: goals, budgets: budgets
+            recurring: recurring, goals: goals, budgets: budgets, balanceChangeLog: balanceChangeLog
         )
     }
 
@@ -566,6 +575,22 @@ final class FinanceStore: ObservableObject {
 
     func balancePoints(for period: ChartPeriod) -> [BalancePoint] {
         balanceHistory[period] ?? []
+    }
+
+    /// The "Money in/out" half of "Why did this change?" — real income and
+    /// spending in a window, straight from `transactions`. No new data
+    /// needed here, unlike the balance-sheet half below.
+    func cashFlow(in range: ClosedRange<Date>) -> (income: Decimal, expenses: Decimal) {
+        let windowed = transactions.filter { range.contains($0.date) }
+        let income = windowed.filter(\.isIncome).reduce(Decimal(0)) { $0 + $1.amount }
+        let expenses = windowed.filter { !$0.isIncome }.reduce(Decimal(0)) { $0 + $1.amount }
+        return (income, expenses)
+    }
+
+    /// The "Balance changes" half — every asset/liability mutation logged
+    /// in the window, most recent first.
+    func balanceChanges(in range: ClosedRange<Date>) -> [BalanceChangeEvent] {
+        balanceChangeLog.filter { range.contains($0.date) }.sorted { $0.date > $1.date }
     }
 
     /// A category's real spend this month — also the pre-fill source for

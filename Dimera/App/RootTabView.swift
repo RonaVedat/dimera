@@ -6,6 +6,7 @@ enum AppTab: Hashable {
 
 struct RootTabView: View {
     @EnvironmentObject private var store: FinanceStore
+    @ObservedObject private var storeManager = StoreManager.shared
     @State private var selection: AppTab = .home
 
     private var isFirstLoad: Bool {
@@ -47,6 +48,18 @@ struct RootTabView: View {
         .task {
             await store.load()
         }
+        .sheet(item: welcomeBinding, onDismiss: storeManager.welcomeShown) { variant in
+            PremiumWelcomeSheet(variant: variant)
+        }
+    }
+
+    /// Premium changes that happen outside the paywall — a family member's
+    /// first access, an approved Ask to Buy — still deserve a welcome.
+    private var welcomeBinding: Binding<PremiumWelcomeVariant?> {
+        Binding(
+            get: { storeManager.pendingWelcome },
+            set: { if $0 == nil { storeManager.welcomeShown() } }
+        )
     }
 }
 

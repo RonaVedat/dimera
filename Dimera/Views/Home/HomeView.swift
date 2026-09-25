@@ -18,12 +18,14 @@ struct HomeView: View {
         case add(AddEntrySheet.Kind?)
         case settings
         case breakdown
+        case deltaBreakdown
 
         var id: String {
             switch self {
             case .add(let kind): return "add-\(kind?.rawValue ?? "chooser")"
             case .settings: return "settings"
             case .breakdown: return "breakdown"
+            case .deltaBreakdown: return "deltaBreakdown"
             }
         }
     }
@@ -54,6 +56,62 @@ struct HomeView: View {
         selectedIndex == nil ? period.windowLabel : String.localized("from period start")
     }
 
+    /// The exact span the visible delta covers — period start through
+    /// whatever's currently displayed (today, or a scrubbed point) — reused
+    /// as-is for "Why did this change?" so the breakdown always explains
+    /// precisely the number just tapped, never a different window.
+    private var windowRange: ClosedRange<Date>? {
+        guard let start = points.first?.date else { return nil }
+        // Mirrors `displayedValue`: when nothing's scrubbed, the headline
+        // reflects the live net worth *right now*, not the chart's last
+        // plotted point (whose date is fixed at the last history rebuild
+        // and can lag behind an event logged seconds ago in this same
+        // session) — using that stale date here would silently drop any
+        // just-added balance-sheet event from its own explanation.
+        let end: Date
+        if let selectedIndex, points.indices.contains(selectedIndex) {
+            end = points[selectedIndex].date
+        } else {
+            end = Date()
+        }
+        guard start <= end else { return nil }
+        return start...end
+    }
+
+    private var windowBalanceChanges: [BalanceChangeEvent] {
+        guard let windowRange else { return [] }
+        return store.balanceChanges(in: windowRange)
+    }
+
+    private var windowCashFlow: (income: Decimal, expenses: Decimal) {
+        guard let windowRange else { return (0, 0) }
+        return store.cashFlow(in: windowRange)
+    }
+
+    /// One diamond per balance-sheet event across the whole visible chart
+    /// period (not just the scrubbed window) — snapped onto the nearest
+    /// existing point's own date/value so it always sits exactly on the
+    /// rendered line, never at an invented coordinate. Uses `Date()` as the
+    /// upper bound, not the chart's last plotted point, for the same reason
+    /// `windowRange` does: the trailing point's date is fixed at the last
+    /// history rebuild and can otherwise exclude an event from this very
+    /// session.
+    private var chartEventMarkers: [BalancePoint] {
+        guard let start = points.first?.date else { return [] }
+        return store.balanceChanges(in: start...Date()).compactMap { event in
+            points.min { abs($0.date.timeIntervalSince(event.date)) < abs($1.date.timeIntervalSince(event.date)) }
+        }
+    }
+
+    /// Only set when the window actually contains a balance-sheet event —
+    /// the common case (ordinary spending, no asset/liability edits) is
+    /// left exactly as it reads today, since it's already correct there.
+    private var deltaQualifier: String? {
+        guard !windowBalanceChanges.isEmpty else { return nil }
+        let hasCashFlow = windowCashFlow.income > 0 || windowCashFlow.expenses > 0
+        return hasCashFlow ? String.localized("Includes a balance change") : String.localized("Balance change")
+    }
+
     private var greeting: String {
         switch Calendar.current.component(.hour, from: Date()) {
         case 5..<12: return String.localized("Good morning,")
@@ -79,7 +137,7 @@ struct HomeView: View {
                         .padding(.top, 20)
                         .animation(.snappy(duration: 0.15), value: selectedIndex)
 
-                    BalanceLineChart(points: points, selectedIndex: $selectedIndex)
+                    BalanceLineChart(points: points, selectedIndex: $selectedIndex, events: chartEventMarkers)
                         .frame(height: 170)
                         .padding(.top, 14)
 
@@ -143,6 +201,11 @@ struct HomeView: View {
                 SettingsView()
             case .breakdown:
                 NetWorthBreakdownView()
+            case .deltaBreakdown:
+                WhyDidThisChangeSheet(
+                    periodLabel: deltaWindowLabel, totalDelta: Decimal(displayedDelta),
+                    cashFlow: windowCashFlow, balanceChanges: windowBalanceChanges
+                )
             }
         }
         .sheet(item: $editingTransaction) { transaction in
@@ -196,17 +259,45 @@ struct HomeView: View {
                 .font(.system(.largeTitle, design: .rounded).weight(.bold))
                 .monospacedDigit()
                 .foregroundStyle(MonetaColor.textPrimary)
-            HStack(spacing: 5) {
-                Image(systemName: displayedDelta >= 0 ? "arrow.up" : "arrow.down")
-                    .font(.caption.weight(.bold))
-                Text(Currency.string(abs(displayedDelta)))
-                    .font(.subheadline.weight(.semibold))
-                    .monospacedDigit()
-                Text(deltaWindowLabel)
-                    .font(.subheadline)
-                    .foregroundStyle(MonetaColor.textSecondary)
+            Button {
+                activeSheet = .deltaBreakdown
+            } label: {
+                HStack(alignment: .firstTextBaseline, spacing: 5) {
+                    VStack(alignment: .leading, spacing: 1) {
+                        HStack(spacing: 5) {
+                            Image(systemName: displayedDelta >= 0 ? "arrow.up" : "arrow.down")
+                                .font(.caption.weight(.bold))
+                            Text(Currency.string(abs(displayedDelta)))
+                                .font(.subheadline.weight(.semibold))
+                                .monospacedDigit()
+                            Text(deltaWindowLabel)
+                                .font(.subheadline)
+                                .foregroundStyle(MonetaColor.textSecondary)
+                        }
+                        // On its own line rather than merged into the same
+                        // row as the amount — that combination reliably
+                        // wrapped mid-phrase on narrower devices, splitting
+                        // "this month" from its qualifier in a way that read
+                        // as two unrelated fragments (NN Group: aesthetic
+                        // and minimalist design — don't force unrelated
+                        // information into a single crowded line).
+                        if let deltaQualifier {
+                            Text(deltaQualifier)
+                                .font(.footnote)
+                                .foregroundStyle(MonetaColor.textTertiary)
+                        }
+                    }
+                    Image(systemName: "chevron.right")
+                        .font(.caption2.weight(.semibold))
+                        .foregroundStyle(MonetaColor.textTertiary)
+                }
+                .foregroundStyle(displayedDelta >= 0 ? MonetaColor.gain : MonetaColor.loss)
+                .padding(.vertical, 6)
+                .contentShape(Rectangle())
             }
-            .foregroundStyle(displayedDelta >= 0 ? MonetaColor.gain : MonetaColor.loss)
+            .buttonStyle(.plain)
+            .accessibilityElement(children: .combine)
+            .accessibilityHint("Double tap to see what changed")
         }
     }
 

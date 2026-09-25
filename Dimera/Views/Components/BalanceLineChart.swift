@@ -8,6 +8,11 @@ import Charts
 struct BalanceLineChart: View {
     let points: [BalancePoint]
     @Binding var selectedIndex: Int?
+    /// Where a balance-sheet event (asset/liability added, changed, removed)
+    /// falls on the line — plotted at the nearest existing point's own value
+    /// so a marker always sits exactly on the line rather than inventing a
+    /// Y-coordinate. Defaults to none so every other chart usage is unaffected.
+    var events: [BalancePoint] = []
 
     private var valueRange: ClosedRange<Double> {
         let values = points.map(\.value)
@@ -30,6 +35,13 @@ struct BalanceLineChart: View {
                     .interpolationMethod(.catmullRom)
                     .lineStyle(StrokeStyle(lineWidth: 2, lineCap: .round, lineJoin: .round))
                     .foregroundStyle(MonetaColor.textPrimary)
+            }
+
+            ForEach(events) { event in
+                PointMark(x: .value("Date", event.date), y: .value("Balance", event.value))
+                    .symbol(.diamond)
+                    .symbolSize(70)
+                    .foregroundStyle(MonetaColor.accent)
             }
 
             if let selectedIndex, points.indices.contains(selectedIndex) {

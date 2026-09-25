@@ -23,6 +23,7 @@ targets:
       - path: Dimera
         excludes:
           - App/Info.plist
+          - Products.storekit
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.dimera.app
@@ -31,3 +32,19 @@ targets:
         INFOPLIST_FILE: Dimera/App/Info.plist
     scheme:
       storeKitConfiguration: Dimera/Products.storekit
+      testTargets:
+        - DimeraTests
+
+  DimeraTests:
+    type: bundle.unit-test
+    platform: iOS
+    sources:
+      - path: DimeraTests
+      - path: Dimera/Products.storekit
+        buildPhase: resources
+    dependencies:
+      - target: Dimera
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.dimera.app.tests
+        GENERATE_INFOPLIST_FILE: YES

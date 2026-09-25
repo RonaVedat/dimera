@@ -8,7 +8,10 @@ struct SettingsView: View {
     @AppStorage("hasCompletedSnapshot") private var hasCompletedSnapshot = true
     @AppStorage("appearanceMode") private var appearanceModeRaw = AppearanceMode.dark.rawValue
     @AppStorage(AppLanguage.storageKey) private var appLanguageRaw = AppLanguage.system.rawValue
+    @ObservedObject private var storeManager = StoreManager.shared
     @State private var showPaywall = false
+    @State private var paywallAudience: PremiumAudience = .justMe
+    @State private var showManageSubscriptions = false
     @State private var receiptCount = 0
     @State private var isRestoring = false
     @State private var restoreMessage: String?
@@ -64,7 +67,7 @@ struct SettingsView: View {
                 }
             }
             .sheet(isPresented: $showPaywall) {
-                PaywallView()
+                PaywallView(initialAudience: paywallAudience)
             }
             .task {
                 receiptCount = await ReceiptStore.shared.receiptCount
@@ -97,25 +100,29 @@ struct SettingsView: View {
     }
 
     private var premiumSection: some View {
-        Section {
+        let state = storeManager.state
+        return Section {
             HStack(spacing: 14) {
-                Image(systemName: isPremium ? "sparkles" : "lock")
+                Image(systemName: state.isPremium ? "sparkles" : "lock")
                     .font(.title3)
                     .foregroundStyle(MonetaColor.accent)
                     .frame(width: 28)
 
                 VStack(alignment: .leading, spacing: 2) {
-                    Text(isPremium ? "Dimera Premium" : "Free plan")
+                    Text(planTitle)
                         .font(.subheadline.weight(.semibold))
-                    Text(isPremium ? "Insights and forecasting unlocked" : "Manual tracking and basic dashboard")
-                        .font(.footnote)
-                        .foregroundStyle(MonetaColor.textSecondary)
+                    ForEach(planDetails, id: \.self) { line in
+                        Text(line)
+                            .font(.footnote)
+                            .foregroundStyle(MonetaColor.textSecondary)
+                    }
                 }
 
                 Spacer()
 
-                if !isPremium {
+                if state.shouldOfferPurchase && storeManager.canMakePayments {
                     Button {
+                        paywallAudience = .justMe
                         showPaywall = true
                     } label: {
                         Text("Upgrade")
@@ -130,7 +137,26 @@ struct SettingsView: View {
             }
             .padding(.vertical, 4)
 
-            if !isPremium {
+            if let notice = premiumNotice {
+                Label(notice, systemImage: "exclamationmark.circle")
+                    .font(.footnote)
+                    .foregroundStyle(MonetaColor.warning)
+            }
+
+            if state.canManage || storeManager.renewal == .paymentProblem {
+                Button("Manage subscription") {
+                    showManageSubscriptions = true
+                }
+            }
+
+            if state.canUpgradeToFamily && storeManager.familyPlanAvailable && storeManager.canMakePayments {
+                Button("Upgrade to Family") {
+                    paywallAudience = .family
+                    showPaywall = true
+                }
+            }
+
+            if state == .free {
                 Button {
                     restore()
                 } label: {
@@ -144,11 +170,63 @@ struct SettingsView: View {
                 }
                 .disabled(isRestoring)
             }
+        } footer: {
+            if let footer = premiumFooter {
+                Text(footer)
+            }
         }
+        .manageSubscriptionsSheet(isPresented: $showManageSubscriptions, groupID: storeManager.subscriptionGroupID)
         .alert("Nothing to restore", isPresented: showRestoreMessage) {
             Button("OK", role: .cancel) {}
         } message: {
             Text(restoreMessage ?? "")
+        }
+    }
+
+    private var planTitle: String {
+        switch storeManager.state {
+        case .free: return String.localized("Free plan")
+        case .individual: return String.localized("Dimera Premium")
+        case .familyPurchaser: return String.localized("Premium Family · Shared with your family")
+        case .familyMember: return String.localized("Premium Family · Shared with you")
+        case .otherShared: return String.localized("Dimera Premium · Included")
+        }
+    }
+
+    private var planDetails: [String] {
+        let renewalText = storeManager.renewal.flatMap { $0 == .paymentProblem ? nil : $0.displayText }
+        switch storeManager.state {
+        case .free:
+            return [String.localized("Tracking, budgets, net worth and subscriptions")]
+        case .individual(let plan):
+            return [plan.title, renewalText].compactMap { $0 }
+        case .familyPurchaser:
+            return [renewalText].compactMap { $0 }
+        case .familyMember:
+            return [String.localized("Included in your family's subscription.")]
+        case .otherShared:
+            return []
+        }
+    }
+
+    private var premiumNotice: String? {
+        if storeManager.renewal == .paymentProblem {
+            return RenewalSummary.paymentProblem.displayText
+        }
+        if case .familyMember(let alsoPays) = storeManager.state, alsoPays != nil {
+            return String.localized("Your family plan already covers you. You can cancel your own subscription to avoid paying twice.")
+        }
+        return nil
+    }
+
+    private var premiumFooter: String? {
+        switch storeManager.state {
+        case .individual where storeManager.familyPlanAvailable && storeManager.canMakePayments:
+            return String.localized("Upgrading to Family gives you a prorated refund for the rest of your current plan.")
+        case .familyPurchaser:
+            return String.localized("Everyone in your Family Sharing group gets Premium. If someone doesn't, check that Share with Family is on in Settings › Family › Subscriptions.")
+        default:
+            return nil
         }
     }
 
@@ -162,7 +240,7 @@ struct SettingsView: View {
         Task {
             defer { isRestoring = false }
             try? await StoreManager.shared.restorePurchases()
-            if !isPremium {
+            if !StoreManager.shared.state.isPremium {
                 restoreMessage = String.localized("We didn't find an active Dimera Premium subscription for this Apple ID.")
             }
         }
@@ -247,8 +325,11 @@ struct SettingsView: View {
     #if DEBUG
     private var debugSection: some View {
         Section {
-            Toggle("Simulate Premium", isOn: $isPremium)
-                .tint(MonetaColor.accent)
+            Picker("Simulate Premium", selection: debugPremiumOverride) {
+                ForEach(DebugPremiumOption.allCases) { option in
+                    Text(verbatim: option.label).tag(option)
+                }
+            }
             Button("Restart onboarding") {
                 dismiss()
                 FinancialSnapshotStorage.current = nil
@@ -264,8 +345,66 @@ struct SettingsView: View {
             Text("Development-only controls — never shown in a release build.")
         }
     }
+
+    private var debugPremiumOverride: Binding<DebugPremiumOption> {
+        Binding(
+            get: { DebugPremiumOption(state: storeManager.currentDebugOverride) },
+            set: { storeManager.setDebugOverride($0.state) }
+        )
+    }
     #endif
 }
+
+private extension View {
+    /// The group-scoped sheet opens straight to Dimera's subscription; the
+    /// fallback covers the moment before products have loaded.
+    @ViewBuilder
+    func manageSubscriptionsSheet(isPresented: Binding<Bool>, groupID: String?) -> some View {
+        if let groupID {
+            manageSubscriptionsSheet(isPresented: isPresented, subscriptionGroupID: groupID)
+        } else {
+            manageSubscriptionsSheet(isPresented: isPresented)
+        }
+    }
+}
+
+#if DEBUG
+private enum DebugPremiumOption: String, CaseIterable, Identifiable {
+    case real, free, monthly, yearly, familyPurchaser, familyMember, familyMemberAlsoPays, otherShared
+
+    var id: String { rawValue }
+
+    var label: String {
+        switch self {
+        case .real: return "Real (StoreKit)"
+        case .free: return "Free"
+        case .monthly: return "Monthly"
+        case .yearly: return "Yearly"
+        case .familyPurchaser: return "Family purchaser"
+        case .familyMember: return "Family member"
+        case .familyMemberAlsoPays: return "Family member + own plan"
+        case .otherShared: return "Organization"
+        }
+    }
+
+    var state: PremiumState? {
+        switch self {
+        case .real: return nil
+        case .free: return .free
+        case .monthly: return .individual(.monthly)
+        case .yearly: return .individual(.yearly)
+        case .familyPurchaser: return .familyPurchaser
+        case .familyMember: return .familyMember(alsoPays: nil)
+        case .familyMemberAlsoPays: return .familyMember(alsoPays: .monthly)
+        case .otherShared: return .otherShared
+        }
+    }
+
+    init(state: PremiumState?) {
+        self = Self.allCases.first { $0.state == state } ?? .real
+    }
+}
+#endif
 
 #Preview {
     SettingsView().environmentObject(FinanceStore())

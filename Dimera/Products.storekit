@@ -66,9 +66,53 @@
         {
           "adHocOffers" : [],
           "codeOffers" : [],
+          "displayPrice" : "59.99",
+          "familyShareable" : true,
+          "groupNumber" : 1,
+          "internalID" : "21500003",
+          "introductoryOffer" : null,
+          "localizations" : [
+            {
+              "description" : "Premium for up to 6 people through Apple Family Sharing.",
+              "displayName" : "Dimera Premium Family",
+              "locale" : "en_US"
+            }
+          ],
+          "productID" : "com.dimera.app.premium.family.yearly",
+          "recurringSubscriptionPeriod" : "P1Y",
+          "referenceName" : "Dimera Premium Family Yearly",
+          "subscriptionGroupID" : "21500000",
+          "taxCategory" : "kTaxCategoryConsumerSoftware",
+          "type" : "RecurringSubscription"
+        },
+        {
+          "adHocOffers" : [],
+          "codeOffers" : [],
+          "displayPrice" : "39.99",
+          "familyShareable" : false,
+          "groupNumber" : 2,
+          "internalID" : "21500002",
+          "introductoryOffer" : null,
+          "localizations" : [
+            {
+              "description" : "Full category breakdown, 30-day forecasting, premium reports, and unlimited receipts.",
+              "displayName" : "Dimera Premium",
+              "locale" : "en_US"
+            }
+          ],
+          "productID" : "com.dimera.app.premium.yearly",
+          "recurringSubscriptionPeriod" : "P1Y",
+          "referenceName" : "Dimera Premium Yearly",
+          "subscriptionGroupID" : "21500000",
+          "taxCategory" : "kTaxCategoryConsumerSoftware",
+          "type" : "RecurringSubscription"
+        },
+        {
+          "adHocOffers" : [],
+          "codeOffers" : [],
           "displayPrice" : "4.99",
           "familyShareable" : false,
-          "groupNumber" : 1,
+          "groupNumber" : 2,
           "internalID" : "21500001",
           "introductoryOffer" : null,
           "localizations" : [

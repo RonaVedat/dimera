@@ -1,36 +1,71 @@
 import SwiftUI
 
 /// The in-app paywall reached by tapping "Unlock with Premium" on a gated
-/// feature (as opposed to `ValueStepView`, its onboarding sibling). Real
-/// StoreKit 2 purchases — Apple processes the payment and hands back a
-/// verified entitlement; this app never sees a name, email, or card number.
+/// feature, or "Upgrade to Family" in Settings (as opposed to
+/// `ValueStepView`, its onboarding sibling). Real StoreKit 2 purchases —
+/// Apple processes the payment and hands back a verified entitlement; this
+/// app never sees a name, email, or card number.
 struct PaywallView: View {
     @Environment(\.dismiss) private var dismiss
     @ObservedObject private var storeManager = StoreManager.shared
-    @State private var isPurchasing = false
+    @State private var selection: PremiumPlan
+    @State private var phase: Phase = .idle
     @State private var isRestoring = false
     @State private var purchaseErrorMessage: String?
     @State private var restoreMessage: String?
 
+    private enum Phase: Equatable {
+        case idle, purchasing, awaitingApproval
+        case welcome(PremiumWelcomeVariant)
+    }
+
+    init(initialAudience: PremiumAudience = .justMe) {
+        _selection = State(initialValue: initialAudience == .family ? .family : .yearly)
+    }
+
+    private var isUpgradingToFamily: Bool {
+        storeManager.state.canUpgradeToFamily && selection == .family
+    }
+
     var body: some View {
+        switch phase {
+        case .welcome(let variant):
+            PremiumWelcomeSheet(variant: variant)
+        case .awaitingApproval:
+            awaitingApproval
+        case .idle, .purchasing:
+            paywall
+        }
+    }
+
+    private var paywall: some View {
         NavigationStack {
             ScrollView {
                 VStack(alignment: .leading, spacing: 24) {
                     PremiumHeaderBadge()
 
                     VStack(alignment: .leading, spacing: 8) {
-                        Text("Unlock Financial Intelligence")
+                        Text(isUpgradingToFamily ? String.localized("Share Premium with your family") : String.localized("Unlock Financial Intelligence"))
                             .font(.system(.title, design: .rounded).weight(.bold))
                             .foregroundStyle(MonetaColor.textPrimary)
                             .fixedSize(horizontal: false, vertical: true)
                             .accessibilityAddTraits(.isHeader)
-                        Text("Understand where your money goes.")
+                        Text(isUpgradingToFamily
+                             ? String.localized("You'll get a prorated refund for the rest of your current plan.")
+                             : String.localized("Understand where your money goes."))
                             .font(.subheadline)
                             .foregroundStyle(MonetaColor.textSecondary)
+                            .fixedSize(horizontal: false, vertical: true)
                     }
 
-                    PremiumFeatureList()
-                    PremiumPriceTag()
+                    PremiumFeatureList(includesFamily: selection == .family)
+
+                    if storeManager.canMakePayments {
+                        PremiumPlanPicker(selection: $selection)
+                        PremiumLegalFooter(plan: selection)
+                    } else {
+                        PurchasesUnavailableNotice()
+                    }
 
                     restoreButton
                 }
@@ -40,22 +75,9 @@ struct PaywallView: View {
             }
             .background(MonetaColor.canvas)
             .safeAreaInset(edge: .bottom) {
-                Button {
-                    startPurchase()
-                } label: {
-                    HStack(spacing: 8) {
-                        if isPurchasing {
-                            ProgressView()
-                                .tint(MonetaColor.canvas)
-                        }
-                        Text(isPurchasing ? String.localized("Processing…") : String.localized("Start Premium"))
-                    }
+                if storeManager.canMakePayments {
+                    purchaseButton
                 }
-                .buttonStyle(OnboardingPrimaryButtonStyle(isEnabled: !isPurchasing))
-                .disabled(isPurchasing)
-                .padding(.horizontal, MonetaMetrics.screenPadding)
-                .padding(.bottom, 16)
-                .background(.bar)
             }
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
@@ -64,8 +86,8 @@ struct PaywallView: View {
                 }
             }
             .task {
-                if storeManager.product == nil {
-                    await storeManager.loadProduct()
+                if storeManager.products.isEmpty {
+                    await storeManager.loadProducts()
                 }
             }
             .alert("Purchase failed", isPresented: showPurchaseError) {
@@ -77,6 +99,62 @@ struct PaywallView: View {
                 Button("OK", role: .cancel) {}
             } message: {
                 Text(restoreMessage ?? "")
+            }
+        }
+    }
+
+    private var purchaseButton: some View {
+        let isPurchasing = phase == .purchasing
+        let canBuy = !isPurchasing && storeManager.products[selection] != nil
+        return Button {
+            startPurchase()
+        } label: {
+            HStack(spacing: 8) {
+                if isPurchasing {
+                    ProgressView()
+                        .tint(MonetaColor.canvas)
+                }
+                Text(buttonTitle)
+            }
+        }
+        .buttonStyle(OnboardingPrimaryButtonStyle(isEnabled: canBuy))
+        .disabled(!canBuy)
+        .padding(.horizontal, MonetaMetrics.screenPadding)
+        .padding(.bottom, 16)
+        .background(.bar)
+    }
+
+    private var buttonTitle: String {
+        if phase == .purchasing { return String.localized("Processing…") }
+        return selection == .family ? String.localized("Start Premium Family") : String.localized("Start Premium")
+    }
+
+    private var awaitingApproval: some View {
+        NavigationStack {
+            VStack(spacing: 16) {
+                Spacer()
+                Image(systemName: "hourglass")
+                    .font(.system(size: 40, weight: .semibold))
+                    .foregroundStyle(MonetaColor.accent)
+                    .accessibilityHidden(true)
+                Text("Waiting for approval")
+                    .font(.system(.title2, design: .rounded).weight(.bold))
+                    .foregroundStyle(MonetaColor.textPrimary)
+                    .accessibilityAddTraits(.isHeader)
+                Text("You'll get Premium as soon as it's approved.")
+                    .font(.subheadline)
+                    .foregroundStyle(MonetaColor.textSecondary)
+                    .multilineTextAlignment(.center)
+                Spacer()
+            }
+            .padding(.horizontal, MonetaMetrics.screenPadding)
+            .frame(maxWidth: .infinity)
+            .background(MonetaColor.canvas)
+            .safeAreaInset(edge: .bottom) {
+                Button("Close") { dismiss() }
+                    .buttonStyle(OnboardingPrimaryButtonStyle())
+                    .padding(.horizontal, MonetaMetrics.screenPadding)
+                    .padding(.bottom, 16)
             }
         }
     }
@@ -107,18 +185,24 @@ struct PaywallView: View {
         Binding(get: { restoreMessage != nil }, set: { if !$0 { restoreMessage = nil } })
     }
 
+    /// Cancelling is silent, as in the App Store itself. A pending purchase
+    /// is Ask to Buy: the approval arrives later through `StoreManager`'s
+    /// transaction listener, and `RootTabView` welcomes the person then.
     private func startPurchase() {
-        guard !isPurchasing else { return }
-        isPurchasing = true
+        guard phase == .idle else { return }
+        phase = .purchasing
         Task {
-            defer { isPurchasing = false }
             do {
-                let outcome = try await storeManager.purchase()
-                if outcome == .success {
-                    Haptics.success()
-                    dismiss()
+                switch try await storeManager.purchase(selection) {
+                case .success:
+                    phase = PremiumWelcomeVariant(state: storeManager.state).map { .welcome($0) } ?? .idle
+                case .pending:
+                    phase = .awaitingApproval
+                case .cancelled:
+                    phase = .idle
                 }
             } catch {
+                phase = .idle
                 purchaseErrorMessage = String.localized("Something went wrong. Please try again.")
             }
         }
@@ -131,7 +215,7 @@ struct PaywallView: View {
             defer { isRestoring = false }
             do {
                 try await storeManager.restorePurchases()
-                if UserDefaults.standard.bool(forKey: "isPremium") {
+                if storeManager.state.isPremium {
                     Haptics.success()
                     dismiss()
                 } else {

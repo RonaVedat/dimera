@@ -14,6 +14,22 @@ struct ValueStepView: View {
     var onBack: (() -> Void)?
     @State private var isPurchasing = false
     @State private var purchaseErrorMessage: String?
+    @State private var selection: PremiumPlan = .yearly
+    @State private var welcome: PremiumWelcomeVariant?
+    @State private var isAwaitingApproval = false
+
+    /// HIG: encourage a new subscription only when someone isn't already a
+    /// subscriber — e.g. a family member installing Dimera for the first
+    /// time already has Premium through their family.
+    private var canSell: Bool {
+        storeManager.state.shouldOfferPurchase && storeManager.canMakePayments
+    }
+
+    private var primaryTitle: String {
+        if !canSell { return String.localized("Continue") }
+        if isPurchasing { return String.localized("Processing…") }
+        return selection == .family ? String.localized("Start Premium Family") : String.localized("Start Premium")
+    }
 
     private var greeting: String {
         switch Calendar.current.component(.hour, from: Date()) {
@@ -28,11 +44,11 @@ struct ValueStepView: View {
             progress: progress,
             stepLabel: stepLabel,
             onBack: onBack,
-            primaryTitle: isPurchasing ? String.localized("Processing…") : String.localized("Start Premium"),
-            isPrimaryEnabled: !isPurchasing,
-            primaryAction: startPurchase,
-            secondaryTitle: String.localized("Not now"),
-            secondaryAction: next
+            primaryTitle: primaryTitle,
+            isPrimaryEnabled: !canSell || (!isPurchasing && storeManager.products[selection] != nil),
+            primaryAction: canSell ? startPurchase : next,
+            secondaryTitle: canSell ? String.localized("Not now") : nil,
+            secondaryAction: canSell ? next : nil
         ) {
             VStack(alignment: .leading, spacing: 24) {
                 Spacer(minLength: 12)
@@ -57,25 +73,10 @@ struct ValueStepView: View {
 
                 Divider().overlay(MonetaColor.separator)
 
-                VStack(alignment: .leading, spacing: 16) {
-                    Text("Then go further.")
-                        .font(.subheadline.weight(.semibold))
-                        .foregroundStyle(MonetaColor.textSecondary)
-
-                    PremiumHeaderBadge()
-
-                    VStack(alignment: .leading, spacing: 6) {
-                        Text("Unlock Financial Intelligence")
-                            .font(.system(.title2, design: .rounded).weight(.bold))
-                            .foregroundStyle(MonetaColor.textPrimary)
-                            .fixedSize(horizontal: false, vertical: true)
-                        Text("Understand where your money goes.")
-                            .font(.subheadline)
-                            .foregroundStyle(MonetaColor.textSecondary)
-                    }
-
-                    PremiumFeatureList()
-                    PremiumPriceTag()
+                if storeManager.state.shouldOfferPurchase {
+                    premiumPitch
+                } else {
+                    alreadyPremium
                 }
             }
         }
@@ -84,6 +85,63 @@ struct ValueStepView: View {
             Button("Continue with Free") { next() }
         } message: {
             Text(purchaseErrorMessage ?? "")
+        }
+        .alert("Waiting for approval", isPresented: $isAwaitingApproval) {
+            Button("OK") { next() }
+        } message: {
+            Text("You'll get Premium as soon as it's approved.")
+        }
+        .sheet(item: $welcome, onDismiss: next) { variant in
+            PremiumWelcomeSheet(variant: variant)
+        }
+    }
+
+    private var premiumPitch: some View {
+        VStack(alignment: .leading, spacing: 16) {
+            Text("Then go further.")
+                .font(.subheadline.weight(.semibold))
+                .foregroundStyle(MonetaColor.textSecondary)
+
+            PremiumHeaderBadge()
+
+            VStack(alignment: .leading, spacing: 6) {
+                Text("Unlock Financial Intelligence")
+                    .font(.system(.title2, design: .rounded).weight(.bold))
+                    .foregroundStyle(MonetaColor.textPrimary)
+                    .fixedSize(horizontal: false, vertical: true)
+                Text("Understand where your money goes.")
+                    .font(.subheadline)
+                    .foregroundStyle(MonetaColor.textSecondary)
+            }
+
+            PremiumFeatureList(includesFamily: selection == .family)
+
+            if storeManager.canMakePayments {
+                PremiumPlanPicker(selection: $selection)
+                PremiumLegalFooter(plan: selection)
+            } else {
+                PurchasesUnavailableNotice()
+            }
+        }
+    }
+
+    private var alreadyPremium: some View {
+        VStack(alignment: .leading, spacing: 16) {
+            PremiumHeaderBadge()
+
+            VStack(alignment: .leading, spacing: 6) {
+                Text("You already have Premium")
+                    .font(.system(.title2, design: .rounded).weight(.bold))
+                    .foregroundStyle(MonetaColor.textPrimary)
+                    .fixedSize(horizontal: false, vertical: true)
+                if case .familyMember = storeManager.state {
+                    Text("Included in your family's subscription.")
+                        .font(.subheadline)
+                        .foregroundStyle(MonetaColor.textSecondary)
+                }
+            }
+
+            PremiumFeatureList()
         }
     }
 
@@ -94,20 +152,26 @@ struct ValueStepView: View {
         )
     }
 
-    /// Cancellation is silent (matches the App Store's own behavior); a
-    /// pending purchase (Ask to Buy) resolves later via `StoreManager`'s
-    /// transaction listener with no further action needed here; only a
-    /// genuine failure surfaces an alert.
+    /// Cancellation is silent (matches the App Store's own behavior). A
+    /// pending purchase is Ask to Buy: say so, then continue — the approval
+    /// arrives later via `StoreManager`'s transaction listener.
     private func startPurchase() {
         guard !isPurchasing else { return }
         isPurchasing = true
         Task {
             defer { isPurchasing = false }
             do {
-                let outcome = try await storeManager.purchase()
-                if outcome == .success {
-                    Haptics.success()
-                    next()
+                switch try await storeManager.purchase(selection) {
+                case .success:
+                    if let variant = PremiumWelcomeVariant(state: storeManager.state) {
+                        welcome = variant
+                    } else {
+                        next()
+                    }
+                case .pending:
+                    isAwaitingApproval = true
+                case .cancelled:
+                    break
                 }
             } catch {
                 purchaseErrorMessage = String.localized("Something went wrong. Please try again.")

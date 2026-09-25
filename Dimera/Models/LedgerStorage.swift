@@ -15,10 +15,12 @@ struct Ledger {
     var recurring: [RecurringEntry]
     var goals: [Goal]
     var budgets: [Budget]
+    var balanceChangeLog: [BalanceChangeEvent]
 
     init(
         cash: Decimal, monthDelta: Decimal, assets: [Asset], liabilities: [Liability],
-        transactions: [Transaction], recurring: [RecurringEntry], goals: [Goal], budgets: [Budget] = []
+        transactions: [Transaction], recurring: [RecurringEntry], goals: [Goal], budgets: [Budget] = [],
+        balanceChangeLog: [BalanceChangeEvent] = []
     ) {
         self.cash = cash
         self.monthDelta = monthDelta
@@ -28,20 +30,22 @@ struct Ledger {
         self.recurring = recurring
         self.goals = goals
         self.budgets = budgets
+        self.balanceChangeLog = balanceChangeLog
     }
 }
 
 extension Ledger: Codable {
     private enum CodingKeys: String, CodingKey {
-        case cash, monthDelta, assets, liabilities, transactions, recurring, goals, budgets
+        case cash, monthDelta, assets, liabilities, transactions, recurring, goals, budgets, balanceChangeLog
     }
 
-    /// Manual conformance so adding `budgets` doesn't break decoding of
-    /// ledgers persisted before this field existed — synthesized
-    /// `Decodable` throws on a missing key, which would otherwise wipe an
-    /// existing install's real data back to sample/onboarding state the
-    /// moment this shipped (the exact bug class `RecurringEntry` already
-    /// hit once and fixed the same way).
+    /// Manual conformance so adding new fields over time (`budgets`, now
+    /// `balanceChangeLog`) never breaks decoding of ledgers persisted
+    /// before that field existed — synthesized `Decodable` throws on a
+    /// missing key, which would otherwise wipe an existing install's real
+    /// data back to sample/onboarding state the moment this shipped (the
+    /// exact bug class `RecurringEntry` already hit once and fixed the
+    /// same way).
     init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
         cash = try container.decode(Decimal.self, forKey: .cash)
@@ -52,6 +56,7 @@ extension Ledger: Codable {
         recurring = try container.decode([RecurringEntry].self, forKey: .recurring)
         goals = try container.decode([Goal].self, forKey: .goals)
         budgets = try container.decodeIfPresent([Budget].self, forKey: .budgets) ?? []
+        balanceChangeLog = try container.decodeIfPresent([BalanceChangeEvent].self, forKey: .balanceChangeLog) ?? []
     }
 
     func encode(to encoder: Encoder) throws {
@@ -64,6 +69,7 @@ extension Ledger: Codable {
         try container.encode(recurring, forKey: .recurring)
         try container.encode(goals, forKey: .goals)
         try container.encode(budgets, forKey: .budgets)
+        try container.encode(balanceChangeLog, forKey: .balanceChangeLog)
     }
 }
 

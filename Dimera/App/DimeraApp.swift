@@ -3,6 +3,7 @@ import SwiftUI
 @main
 struct DimeraApp: App {
     @StateObject private var store = FinanceStore()
+    @Environment(\.scenePhase) private var scenePhase
     @AppStorage("hasCompletedOnboarding") private var hasCompletedOnboarding = false
     @AppStorage("hasCompletedSnapshot") private var hasCompletedSnapshot = false
     @AppStorage("appearanceMode") private var appearanceModeRaw = AppearanceMode.dark.rawValue
@@ -32,6 +33,13 @@ struct DimeraApp: App {
             .preferredColorScheme(appearanceMode.colorScheme)
             .task {
                 StoreManager.shared.start()
+            }
+            .onChange(of: scenePhase) { _, phase in
+                // Family membership and sharing can change while Dimera is
+                // in the background, and there's no server to hear about it.
+                if phase == .active {
+                    Task { await StoreManager.shared.refresh() }
+                }
             }
         }
     }
