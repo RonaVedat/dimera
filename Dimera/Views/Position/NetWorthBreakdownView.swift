@@ -156,6 +156,7 @@ struct NetWorthBreakdownView: View {
             addButton(title: String.localized("Add asset"), kind: .asset)
         } header: {
             Text("Assets · \(Currency.string(store.assetsTotal))")
+                .monospacedDigit()
         } footer: {
             Text("Tap a row to edit, swipe to remove.")
         }
@@ -188,6 +189,7 @@ struct NetWorthBreakdownView: View {
                                     Text("\(Currency.string(payment))/mo")
                                         .font(.footnote)
                                         .foregroundStyle(MonetaColor.textSecondary)
+                                        .monospacedDigit()
                                 }
                             }
                             Spacer()
@@ -210,6 +212,7 @@ struct NetWorthBreakdownView: View {
             addButton(title: String.localized("Add liability"), kind: .liability)
         } header: {
             Text("Liabilities · \(Currency.string(store.debtTotal))")
+                .monospacedDigit()
         } footer: {
             Text("Tap a row to edit, swipe to remove.")
         }

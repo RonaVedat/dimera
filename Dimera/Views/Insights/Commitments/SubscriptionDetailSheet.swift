@@ -14,6 +14,7 @@ struct SubscriptionDetailSheet: View {
     @State private var amountText: String
     @State private var frequency: RecurringFrequency
     @State private var showCancelConfirm = false
+    @State private var showCancelledConfirmation = false
 
     init(entry: RecurringEntry) {
         self.entry = entry
@@ -91,10 +92,22 @@ struct SubscriptionDetailSheet: View {
             ) {
                 Button("Cancel Subscription", role: .destructive) {
                     store.deleteRecurring(entry)
-                    dismiss()
+                    showCancelledConfirmation = true
                 }
             } message: {
                 Text("This stops tracking it — Dimera won't remind you about future charges.")
+            }
+            .fullScreenCover(isPresented: $showCancelledConfirmation) {
+                ConfirmationMomentView(
+                    icon: "checkmark.seal.fill", iconTint: MonetaColor.gain,
+                    headline: String.localized("Subscription cancelled"),
+                    amount: monthlyEquivalent * 12, amountCaption: String.localized("a year"),
+                    subtitle: String.localized("Dimera won't remind you about future charges."),
+                    buttonTitle: String.localized("Done")
+                ) {
+                    showCancelledConfirmation = false
+                    dismiss()
+                }
             }
         }
     }
@@ -137,6 +150,7 @@ struct SubscriptionDetailSheet: View {
                 .font(.subheadline)
                 .foregroundStyle(MonetaColor.textPrimary)
                 .fixedSize(horizontal: false, vertical: true)
+                .monospacedDigit()
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding(16)

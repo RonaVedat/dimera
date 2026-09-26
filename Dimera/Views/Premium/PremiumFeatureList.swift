@@ -145,7 +145,7 @@ struct PremiumPlanPicker: View {
         VStack(alignment: .leading, spacing: 12) {
             if storeManager.products.isEmpty {
                 if storeManager.isLoadingProducts {
-                    placeholderCard
+                    loadingSkeleton
                 } else {
                     unavailableCard
                 }
@@ -261,16 +261,38 @@ struct PremiumPlanPicker: View {
         return String.localized("\(perMonth) per month, billed yearly")
     }
 
-    private var placeholderCard: some View {
-        HStack {
-            Text("Dimera Premium")
-            Spacer()
-            Text(verbatim: "€0.00")
+    /// Shaped like the real picker once prices load — a segmented-control
+    /// bar plus two plan cards — rather than a single generic bar, so the
+    /// layout doesn't shift once real content replaces it (NN/g: a skeleton
+    /// should mirror the final layout closely enough to set expectations).
+    private var loadingSkeleton: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            SkeletonBlock(height: 32, radius: 8)
+            planCardSkeleton
+            planCardSkeleton
         }
-        .font(.subheadline.weight(.semibold))
+        .skeletonShimmer(slowHint: String.localized("Still loading prices — check your connection."))
+    }
+
+    private var planCardSkeleton: some View {
+        HStack(spacing: 12) {
+            Circle()
+                .fill(MonetaColor.cardElevated)
+                .frame(width: 20, height: 20)
+                .redacted(reason: .placeholder)
+            VStack(alignment: .leading, spacing: 6) {
+                SkeletonBlock(width: 80, height: 14, surface: .card)
+                SkeletonBlock(width: 110, height: 11, surface: .card)
+            }
+            Spacer(minLength: 8)
+            VStack(alignment: .trailing, spacing: 6) {
+                SkeletonBlock(width: 60, height: 18, surface: .card)
+                SkeletonBlock(width: 44, height: 10, surface: .card)
+            }
+        }
         .padding(16)
+        .frame(minHeight: 44)
         .monetaCard(radius: MonetaMetrics.tileRadius)
-        .redacted(reason: .placeholder)
     }
 
     private var unavailableCard: some View {

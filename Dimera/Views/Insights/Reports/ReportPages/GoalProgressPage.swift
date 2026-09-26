@@ -52,6 +52,7 @@ struct GoalProgressPage: View {
                                 Text("\(Currency.string(entry.current)) / \(Currency.string(entry.goal.targetAmount))")
                                     .font(.subheadline)
                                     .foregroundStyle(ReportColor.textSecondary)
+                                    .monospacedDigit()
                             }
 
                             GeometryReader { geo in

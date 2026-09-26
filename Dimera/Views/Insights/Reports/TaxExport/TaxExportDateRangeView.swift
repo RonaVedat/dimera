@@ -124,10 +124,22 @@ private struct TaxExportRawResultView: View {
     let transactions: [Transaction]
 
     @State private var fileURL: URL?
+    @State private var deductibleTotal: Decimal = 0
+    @State private var showConfirmation = false
 
     var body: some View {
         Group {
-            if let fileURL {
+            if showConfirmation {
+                ConfirmationMomentView(
+                    icon: "doc.text.fill", iconTint: MonetaColor.accent,
+                    headline: String.localized("Export ready"),
+                    amount: deductibleTotal, amountCaption: String.localized("potentially deductible"),
+                    subtitle: String.localized("Review the numbers, then share when you're ready."),
+                    buttonTitle: String.localized("Share")
+                ) {
+                    showConfirmation = false
+                }
+            } else if let fileURL {
                 ActivitySharePresenter(url: fileURL) { dismiss() }
             } else {
                 ProgressView().frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -139,7 +151,9 @@ private struct TaxExportRawResultView: View {
             let content = format == .csv ? TaxDataExporter.csv(for: filtered) : TaxDataExporter.ofx(for: filtered)
             let url = FileManager.default.temporaryDirectory.appendingPathComponent(TaxDataExporter.filename(format: format, range: range))
             try? content.write(to: url, atomically: true, encoding: .utf8)
+            deductibleTotal = TaxRadarScanner.scan(filtered).reduce(Decimal(0)) { $0 + $1.amount }
             fileURL = url
+            showConfirmation = true
         }
     }
 }

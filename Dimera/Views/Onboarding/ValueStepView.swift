@@ -59,12 +59,11 @@ struct ValueStepView: View {
                     .accessibilityAddTraits(.isHeader)
 
                 if store.isLoading && store.transactions.isEmpty {
-                    ProgressView()
-                        .tint(MonetaColor.textPrimary)
-                        .frame(maxWidth: .infinity)
-                        .padding(.vertical, 60)
+                    previewCardSkeleton
+                        .transition(.opacity)
                 } else {
                     previewCard
+                        .transition(.opacity)
                 }
 
                 Text("A preview with sample numbers — in the next step you'll make it yours.")
@@ -79,6 +78,7 @@ struct ValueStepView: View {
                     alreadyPremium
                 }
             }
+            .animation(.easeInOut(duration: 0.25), value: store.isLoading)
         }
         .alert("Purchase failed", isPresented: showPurchaseError) {
             Button("Try Again", role: .cancel) {}
@@ -177,6 +177,45 @@ struct ValueStepView: View {
                 purchaseErrorMessage = String.localized("Something went wrong. Please try again.")
             }
         }
+    }
+
+    /// Shaped like `previewCard` itself, so nothing shifts once the sample
+    /// numbers resolve.
+    private var previewCardSkeleton: some View {
+        VStack(alignment: .leading, spacing: 18) {
+            SkeletonBlock(width: 100, height: 13)
+
+            VStack(alignment: .leading, spacing: 2) {
+                SkeletonBlock(width: 70, height: 13)
+                SkeletonBlock(width: 160, height: 32)
+            }
+
+            Divider().overlay(MonetaColor.separator)
+
+            SkeletonBlock(width: 80, height: 13)
+
+            HStack(spacing: 10) {
+                previewStatSkeleton
+                previewStatSkeleton
+            }
+
+            VStack(alignment: .leading, spacing: 4) {
+                SkeletonBlock(width: 90, height: 13)
+                SkeletonBlock(width: 60, height: 24)
+            }
+        }
+        .padding(18)
+        .monetaCard()
+        .skeletonShimmer()
+    }
+
+    private var previewStatSkeleton: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            SkeletonBlock(width: 50, height: 11, surface: .card)
+            SkeletonBlock(width: 70, height: 16, surface: .card)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(12)
     }
 
     private var previewCard: some View {

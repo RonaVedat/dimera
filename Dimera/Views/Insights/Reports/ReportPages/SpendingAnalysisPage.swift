@@ -46,11 +46,13 @@ struct SpendingAnalysisPage: View {
                                         Text(delta >= 0 ? "+\(Currency.string(delta))" : "-\(Currency.string(abs(delta)))")
                                             .font(.footnote.weight(.semibold))
                                             .foregroundStyle(delta >= 0 ? ReportColor.loss : ReportColor.gain)
+                                            .monospacedDigit()
                                     }
                                     Text(Currency.string(row.total))
                                         .font(.subheadline.weight(.semibold))
                                         .foregroundStyle(ReportColor.textPrimary)
                                         .frame(width: 90, alignment: .trailing)
+                                        .monospacedDigit()
                                 }
                                 .padding(.vertical, 8)
                                 Divider().overlay(ReportColor.separator)

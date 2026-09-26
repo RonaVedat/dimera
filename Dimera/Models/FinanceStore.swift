@@ -63,11 +63,45 @@ final class FinanceStore: ObservableObject {
 
     // MARK: - Loading
 
-    /// Fetches everything in parallel. A no-op if data already loaded
-    /// successfully once — onboarding and the tab view each call this on
-    /// appear, and the second call shouldn't re-flash a loading spinner.
+    /// A no-op if data already loaded successfully once — onboarding and
+    /// the tab view each call this on appear, and the second call shouldn't
+    /// re-flash a loading spinner.
+    ///
+    /// A returning user's own data is already sitting on disk in
+    /// `LedgerStorage` — there's nothing to fetch and nothing to wait for,
+    /// so it's applied directly with no `isLoading` window at all (Apple
+    /// HIG: "the best content-loading experience finishes before people
+    /// become aware of it"). The sample-data fetch below only ever runs for
+    /// a genuinely fresh install with nothing persisted yet, which is
+    /// exactly the case onboarding's preview needs it to exercise.
     func load() async {
         if hasLoadedOnce && loadError == nil { return }
+
+        if let ledger = LedgerStorage.current {
+            overview = FinanceOverview(cash: ledger.cash, monthDelta: ledger.monthDelta)
+            assets = ledger.assets
+            liabilities = ledger.liabilities
+            transactions = ledger.transactions
+            recurring = ledger.recurring
+            goals = ledger.goals
+            budgets = ledger.budgets
+            balanceChangeLog = ledger.balanceChangeLog
+            rebuildFlatHistory()
+            hasLoadedOnce = true
+            NotificationScheduler.shared.syncSchedule(with: recurring)
+            return
+        }
+
+        if let snapshot = FinancialSnapshotStorage.current {
+            // Onboarding finished in a previous run but nothing's been
+            // persisted yet — shouldn't normally happen once
+            // `applySnapshot` persists immediately, kept as a fallback.
+            apply(snapshot: snapshot)
+            persistLedger()
+            hasLoadedOnce = true
+            NotificationScheduler.shared.syncSchedule(with: recurring)
+            return
+        }
 
         isLoading = true
         loadError = nil
@@ -89,29 +123,6 @@ final class FinanceStore: ObservableObject {
             self.goals = try await goals
             self.balanceHistory = try await balanceHistory
             hasLoadedOnce = true
-
-            // A persisted ledger means the user owns this dashboard for
-            // real — load their actual (possibly empty) data straight from
-            // disk instead of the sample-data preview just fetched above.
-            if let ledger = LedgerStorage.current {
-                // `self.` is required throughout: the local `async let`s
-                // above shadow these property names for the rest of scope.
-                self.overview = FinanceOverview(cash: ledger.cash, monthDelta: ledger.monthDelta)
-                self.assets = ledger.assets
-                self.liabilities = ledger.liabilities
-                self.transactions = ledger.transactions
-                self.recurring = ledger.recurring
-                self.goals = ledger.goals
-                self.budgets = ledger.budgets
-                self.balanceChangeLog = ledger.balanceChangeLog
-                rebuildFlatHistory()
-            } else if let snapshot = FinancialSnapshotStorage.current {
-                // Onboarding finished in a previous run but nothing's been
-                // persisted yet — shouldn't normally happen once
-                // `applySnapshot` persists immediately, kept as a fallback.
-                apply(snapshot: snapshot)
-                persistLedger()
-            }
             // Resyncs reminders for whatever loaded — a no-op unless the
             // user already turned reminders on in a previous session.
             // (`self.` is required here: the local `async let recurring`

@@ -74,6 +74,7 @@ struct CommitmentReportPage: View {
                         Text(Currency.string(annualTotal))
                             .font(.system(size: 32, weight: .bold, design: .rounded))
                             .foregroundStyle(ReportColor.accent)
+                            .monospacedDigit()
                     }
                     .padding(.top, 8)
                 }
@@ -97,6 +98,7 @@ struct CommitmentReportPage: View {
                     Text(Currency.string(entry.amount))
                         .font(.subheadline.weight(.semibold))
                         .foregroundStyle(entry.isPaused ? ReportColor.textSecondary : ReportColor.textPrimary)
+                        .monospacedDigit()
                 }
                 .padding(.vertical, 10)
                 Divider().overlay(ReportColor.separator)
@@ -125,6 +127,7 @@ struct CommitmentReportPage: View {
                     Text(Currency.string(entry.amount))
                         .font(.subheadline.weight(.semibold))
                         .foregroundStyle(ReportColor.textPrimary)
+                        .monospacedDigit()
                 }
                 .padding(.vertical, 10)
                 Divider().overlay(ReportColor.separator)

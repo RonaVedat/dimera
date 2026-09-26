@@ -256,9 +256,8 @@ struct HomeView: View {
                 .font(.footnote)
                 .foregroundStyle(MonetaColor.textSecondary)
                 .contentTransition(.identity)
-            Text(Currency.string(displayedValue))
+            AmountText(displayedValue, isTransient: selectedIndex != nil)
                 .font(.system(.largeTitle, design: .rounded).weight(.bold))
-                .monospacedDigit()
                 .foregroundStyle(MonetaColor.textPrimary)
             Button {
                 activeSheet = .deltaBreakdown
@@ -268,9 +267,8 @@ struct HomeView: View {
                         HStack(spacing: 5) {
                             Image(systemName: displayedDelta >= 0 ? "arrow.up" : "arrow.down")
                                 .font(.caption.weight(.bold))
-                            Text(Currency.string(abs(displayedDelta)))
+                            AmountText(abs(displayedDelta), isTransient: selectedIndex != nil)
                                 .font(.subheadline.weight(.semibold))
-                                .monospacedDigit()
                             Text(deltaWindowLabel)
                                 .font(.subheadline)
                                 .foregroundStyle(MonetaColor.textSecondary)
@@ -329,9 +327,8 @@ struct HomeView: View {
                     .font(.footnote)
                     .foregroundStyle(MonetaColor.textSecondary)
                 Spacer()
-                Text(Currency.string(store.debtTotal))
+                AmountText(store.debtTotal)
                     .font(.subheadline.weight(.bold))
-                    .monospacedDigit()
                     .foregroundStyle(store.debtTotal > 0 ? MonetaColor.loss : MonetaColor.textSecondary)
                 Image(systemName: "chevron.right")
                     .font(.caption2.weight(.semibold))
@@ -360,9 +357,8 @@ struct HomeView: View {
                             .foregroundStyle(MonetaColor.textSecondary)
                     }
                     Spacer(minLength: 6)
-                    Text(entry.isIncome ? "+\(Currency.string(entry.amount))" : Currency.string(entry.amount))
+                    AmountText(entry.amount, signed: entry.isIncome)
                         .font(.subheadline.weight(.semibold))
-                        .monospacedDigit()
                         .foregroundStyle(entry.isIncome ? MonetaColor.gain : MonetaColor.textPrimary)
                 }
                 .padding(.vertical, 8)
@@ -401,9 +397,8 @@ struct HomeView: View {
                                 .font(.subheadline)
                                 .foregroundStyle(MonetaColor.textPrimary)
                             Spacer()
-                            Text(Currency.string(item.total))
+                            AmountText(item.total)
                                 .font(.subheadline.weight(.semibold))
-                                .monospacedDigit()
                                 .foregroundStyle(MonetaColor.textPrimary)
                         }
                     }
@@ -419,9 +414,8 @@ struct HomeView: View {
             Text(title)
                 .font(.footnote)
                 .foregroundStyle(MonetaColor.textSecondary)
-            Text(Currency.string(amount))
+            AmountText(amount)
                 .font(.subheadline.weight(.bold))
-                .monospacedDigit()
                 .foregroundStyle(tint)
                 .lineLimit(1)
                 .minimumScaleFactor(0.8)
@@ -492,12 +486,22 @@ struct HomeView: View {
         Button {
             activeSheet = .add(nil)
         } label: {
-            Image(systemName: "plus")
-                .font(.title3.weight(.bold))
-                .foregroundStyle(MonetaColor.canvas)
-                .frame(width: 56, height: 56)
-                .background(MonetaColor.textPrimary, in: Circle())
-                .shadow(color: .black.opacity(0.25), radius: 10, y: 4)
+            Group {
+                if #available(iOS 26, *) {
+                    Image(systemName: "plus")
+                        .font(.title3.weight(.bold))
+                        .foregroundStyle(MonetaColor.canvas)
+                        .frame(width: 56, height: 56)
+                        .glassEffect(.regular.tint(MonetaColor.textPrimary).interactive(), in: Circle())
+                } else {
+                    Image(systemName: "plus")
+                        .font(.title3.weight(.bold))
+                        .foregroundStyle(MonetaColor.canvas)
+                        .frame(width: 56, height: 56)
+                        .background(MonetaColor.textPrimary, in: Circle())
+                        .shadow(color: .black.opacity(0.25), radius: 10, y: 4)
+                }
+            }
         }
         .buttonStyle(.plain)
         .padding(.trailing, 20)

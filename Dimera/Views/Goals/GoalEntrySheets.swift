@@ -19,6 +19,9 @@ struct AddGoalSheet: View {
     @State private var linkedAssetID: Asset.ID?
     @State private var manualAmountText = ""
     @State private var monthlyContributionText = ""
+    @State private var showGoalReachedConfirmation = false
+    @State private var reachedGoalName = ""
+    @State private var reachedGoalAmount: Decimal = 0
 
     private var targetAmount: Decimal? { parseAmount(targetText) }
     private var canSave: Bool {
@@ -72,21 +75,44 @@ struct AddGoalSheet: View {
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) { Button("Cancel") { dismiss() } }
             }
+            .fullScreenCover(isPresented: $showGoalReachedConfirmation) {
+                ConfirmationMomentView(
+                    icon: "target", iconTint: MonetaColor.accent,
+                    headline: String.localized("Goal reached!"),
+                    amount: reachedGoalAmount, amountCaption: reachedGoalName,
+                    subtitle: String.localized("You did it — fully funded."),
+                    buttonTitle: String.localized("Nice!")
+                ) {
+                    showGoalReachedConfirmation = false
+                    dismiss()
+                }
+            }
         }
     }
 
     private func save() {
         guard let targetAmount else { return }
+        let manualCurrentAmount = trackingMode == .manual ? parseNonNegativeAmount(manualAmountText) : 0
         store.addGoal(
             name: name.trimmingCharacters(in: .whitespaces),
             targetAmount: targetAmount,
             monthlyContribution: parseNonNegativeAmount(monthlyContributionText),
             trackingMode: trackingMode,
             linkedAssetID: trackingMode == .linked ? linkedAssetID : nil,
-            manualCurrentAmount: trackingMode == .manual ? parseNonNegativeAmount(manualAmountText) : 0
+            manualCurrentAmount: manualCurrentAmount
         )
         Haptics.success()
-        dismiss()
+
+        // A goal can start already funded, e.g. a manual current amount
+        // typed in at or above the target — celebrate that too, not just
+        // a later edit that happens to cross 100%.
+        if trackingMode == .manual, goalProgress(current: manualCurrentAmount, target: targetAmount) >= 1.0 {
+            reachedGoalName = name.trimmingCharacters(in: .whitespaces)
+            reachedGoalAmount = targetAmount
+            showGoalReachedConfirmation = true
+        } else {
+            dismiss()
+        }
     }
 }
 
@@ -105,6 +131,8 @@ struct EditGoalSheet: View {
     @State private var manualAmountText: String
     @State private var monthlyContributionText: String
     @State private var showDeleteConfirm = false
+    @State private var showGoalReachedConfirmation = false
+    @State private var reachedGoalAmount: Decimal = 0
 
     init(goal: Goal) {
         self.goal = goal
@@ -178,11 +206,28 @@ struct EditGoalSheet: View {
                     dismiss()
                 }
             }
+            .fullScreenCover(isPresented: $showGoalReachedConfirmation) {
+                ConfirmationMomentView(
+                    icon: "target", iconTint: MonetaColor.accent,
+                    headline: String.localized("Goal reached!"),
+                    amount: reachedGoalAmount, amountCaption: name,
+                    subtitle: String.localized("You did it — fully funded."),
+                    buttonTitle: String.localized("Nice!")
+                ) {
+                    showGoalReachedConfirmation = false
+                    dismiss()
+                }
+            }
         }
     }
 
     private func save() {
         guard let targetAmount else { return }
+        let newManualAmount = trackingMode == .manual ? parseNonNegativeAmount(manualAmountText) : 0
+        let wasReached = goal.trackingMode == .manual
+            && goalProgress(current: goal.manualCurrentAmount, target: goal.targetAmount) >= 1.0
+        let isReached = trackingMode == .manual && goalProgress(current: newManualAmount, target: targetAmount) >= 1.0
+
         store.updateGoal(
             goal,
             name: name.trimmingCharacters(in: .whitespaces),
@@ -190,10 +235,16 @@ struct EditGoalSheet: View {
             monthlyContribution: parseNonNegativeAmount(monthlyContributionText),
             trackingMode: trackingMode,
             linkedAssetID: trackingMode == .linked ? linkedAssetID : nil,
-            manualCurrentAmount: trackingMode == .manual ? parseNonNegativeAmount(manualAmountText) : 0
+            manualCurrentAmount: newManualAmount
         )
         Haptics.success()
-        dismiss()
+
+        if !wasReached && isReached {
+            reachedGoalAmount = targetAmount
+            showGoalReachedConfirmation = true
+        } else {
+            dismiss()
+        }
     }
 }
 
@@ -329,6 +380,7 @@ private struct AssetPickerRow: View {
                     Text(Currency.string(asset.value))
                         .font(.caption)
                         .foregroundStyle(MonetaColor.textSecondary)
+                        .monospacedDigit()
                 }
                 Spacer()
                 Image(systemName: isSelected ? "checkmark.circle.fill" : "circle")
@@ -348,6 +400,17 @@ private func parseNonNegativeAmount(_ text: String) -> Decimal {
     guard !text.isEmpty else { return 0 }
     let normalized = text.replacingOccurrences(of: ",", with: ".")
     return Decimal(string: normalized) ?? 0
+}
+
+/// Mirrors `FinanceStore.progress(for:)`'s formula exactly, for a
+/// manually-tracked goal's raw current/target — used to detect "just
+/// crossed 100%" around a save, before the store has the new values.
+/// Linked-goal progress is derived live from asset value with no discrete
+/// "just changed" moment anywhere in `FinanceStore`, so detecting a crossing
+/// there isn't covered by this first pass.
+private func goalProgress(current: Decimal, target: Decimal) -> Double {
+    guard target > 0 else { return 0 }
+    return min(1, max(0, NSDecimalNumber(decimal: current / target).doubleValue))
 }
 
 #Preview("Add") {

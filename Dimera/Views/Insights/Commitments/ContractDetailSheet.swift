@@ -24,6 +24,7 @@ struct ContractDetailSheet: View {
     @State private var providerNotes: String
     @State private var hasDocument: Bool
     @State private var showCancelConfirm = false
+    @State private var showCancelledConfirmation = false
 
     @State private var showCamera = false
     @State private var showPhotoPicker = false
@@ -117,10 +118,22 @@ struct ContractDetailSheet: View {
             ) {
                 Button("Mark as Cancelled", role: .destructive) {
                     store.cancelContract(entry)
-                    dismiss()
+                    showCancelledConfirmation = true
                 }
             } message: {
                 Text("It stays in your list with a Cancelled label — nothing is deleted.")
+            }
+            .fullScreenCover(isPresented: $showCancelledConfirmation) {
+                ConfirmationMomentView(
+                    icon: "checkmark.seal.fill", iconTint: MonetaColor.gain,
+                    headline: String.localized("Contract cancelled"),
+                    amount: entry.monthlyEquivalentAmount * 12, amountCaption: String.localized("a year"),
+                    subtitle: String.localized("It stays in your list, marked Cancelled — nothing is deleted."),
+                    buttonTitle: String.localized("Done")
+                ) {
+                    showCancelledConfirmation = false
+                    dismiss()
+                }
             }
             .sheet(isPresented: $showCamera) {
                 CameraPicker(onPick: handleImagePicked)

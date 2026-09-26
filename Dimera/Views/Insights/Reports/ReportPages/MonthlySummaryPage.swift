@@ -88,6 +88,7 @@ struct ReportStatTile: View {
                 .foregroundStyle(tint)
                 .lineLimit(1)
                 .minimumScaleFactor(0.8)
+                .monospacedDigit()
         }
         .frame(maxWidth: .infinity, alignment: .leading)
     }

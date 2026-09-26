@@ -50,6 +50,7 @@ struct AnnualConsolidatedReportPage: View {
                                 Text(Currency.string(row.total))
                                     .font(.subheadline.weight(.semibold))
                                     .foregroundStyle(ReportColor.textPrimary)
+                                    .monospacedDigit()
                             }
                             .padding(.vertical, 8)
                             Divider().overlay(ReportColor.separator)

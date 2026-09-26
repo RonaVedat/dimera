@@ -109,6 +109,7 @@ struct InsightsView: View {
                     .font(.subheadline)
                     .foregroundStyle(MonetaColor.textSecondary)
                     .fixedSize(horizontal: false, vertical: true)
+                    .monospacedDigit()
 
                 VStack(spacing: 12) {
                     ForEach(insight.categoryDeltas) { delta in
@@ -130,6 +131,7 @@ struct InsightsView: View {
                     .font(.subheadline)
                     .foregroundStyle(MonetaColor.textSecondary)
                     .fixedSize(horizontal: false, vertical: true)
+                    .monospacedDigit()
 
                 Button {
                     Haptics.selection()
@@ -176,13 +178,12 @@ struct InsightsView: View {
                             .foregroundStyle(MonetaColor.textPrimary)
                         Spacer()
                         if let delta = row.deltaVsAverage {
-                            Text(delta >= 0 ? "+\(Currency.string(delta))" : "-\(Currency.string(abs(delta)))")
+                            AmountText(delta, signed: true)
                                 .font(.footnote.weight(.semibold))
                                 .foregroundStyle(delta >= 0 ? MonetaColor.loss : MonetaColor.gain)
                         }
-                        Text(Currency.string(row.total))
+                        AmountText(row.total)
                             .font(.subheadline.weight(.semibold))
-                            .monospacedDigit()
                             .foregroundStyle(MonetaColor.textPrimary)
                     }
                     .padding(.vertical, 6)

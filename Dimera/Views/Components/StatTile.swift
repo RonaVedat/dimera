@@ -10,10 +10,9 @@ struct StatTile: View {
             Text(title)
                 .font(.footnote)
                 .foregroundStyle(MonetaColor.textSecondary)
-            Text(Currency.string(amount))
+            AmountText(amount)
                 .font(.subheadline.weight(.bold))
                 .foregroundStyle(tint)
-                .monospacedDigit()
                 .lineLimit(1)
                 .minimumScaleFactor(0.8)
         }
