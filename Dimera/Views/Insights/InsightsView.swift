@@ -52,6 +52,7 @@ struct InsightsView: View {
                 }
                 .padding(.horizontal, MonetaMetrics.screenPadding)
                 .padding(.bottom, 24)
+                .adaptiveContentWidth()
             }
             .background(MonetaColor.canvas)
             .navigationTitle("Insights")

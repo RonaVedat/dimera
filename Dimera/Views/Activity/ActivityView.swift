@@ -39,9 +39,15 @@ struct ActivityView: View {
             }
             .listStyle(.plain)
             .scrollContentBackground(.hidden)
+            .adaptiveContentWidth()
             .background(MonetaColor.canvas)
             .navigationTitle("Activity")
-            .searchable(text: $query, prompt: "Search transactions")
+            // Explicit `.navigationBarDrawer` placement, not `.automatic` —
+            // in a NavigationSplitView, `.automatic` can hand the search
+            // field to the sidebar's own toolbar instead of this detail
+            // view's. Transactions search is scoped to this screen, so it
+            // belongs inline here, not sidebar-wide.
+            .searchable(text: $query, placement: .navigationBarDrawer(displayMode: .automatic), prompt: "Search transactions")
             .toolbar {
                 ToolbarItem(placement: .topBarTrailing) {
                     Button {

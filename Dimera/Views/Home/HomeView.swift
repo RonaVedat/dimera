@@ -192,6 +192,7 @@ struct HomeView: View {
 
             floatingAddButton
         }
+        .adaptiveContentWidth()
         .background(MonetaColor.canvas)
         .sheet(item: $activeSheet) { sheet in
             switch sheet {

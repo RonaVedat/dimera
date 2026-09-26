@@ -71,6 +71,7 @@ struct GoalsView: View {
             }
             .listStyle(.plain)
             .scrollContentBackground(.hidden)
+            .adaptiveContentWidth()
             .background(MonetaColor.canvas)
             .navigationTitle("Goals")
             .toolbar {
