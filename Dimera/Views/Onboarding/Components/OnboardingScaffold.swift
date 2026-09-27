@@ -82,6 +82,7 @@ struct OnboardingScaffold<Content: View>: View {
                             .foregroundStyle(MonetaColor.textPrimary)
                             .frame(width: 38, height: 38)
                             .background(MonetaColor.card, in: Circle())
+                            .contentShape(Circle())
                     }
                     .buttonStyle(.plain)
                     .accessibilityLabel("Back")

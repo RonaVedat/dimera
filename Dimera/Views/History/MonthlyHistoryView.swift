@@ -90,6 +90,7 @@ struct MonthlyHistoryView: View {
                 .foregroundStyle(enabled ? MonetaColor.textPrimary : MonetaColor.textTertiary)
                 .frame(width: 34, height: 34)
                 .background(MonetaColor.card, in: Circle())
+                .contentShape(Circle())
         }
         .buttonStyle(.plain)
         .disabled(!enabled)
