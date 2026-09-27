@@ -16,6 +16,7 @@ struct SettingsView: View {
     @State private var isRestoring = false
     @State private var restoreMessage: String?
     @AppStorage(TaxDataExporter.lastNameKey) private var taxExportLastName = ""
+    @AppStorage("userFirstName") private var userFirstName = ""
 
     private var appearanceMode: Binding<AppearanceMode> {
         Binding(
@@ -34,6 +35,8 @@ struct SettingsView: View {
     var body: some View {
         NavigationStack {
             List {
+                yourNameSection
+
                 premiumSection
 
                 if profile != nil || !goals.isEmpty {
@@ -85,6 +88,17 @@ struct SettingsView: View {
             )
         } footer: {
             Text("Photos are compressed and stored only on this device.")
+        }
+    }
+
+    private var yourNameSection: some View {
+        Section {
+            TextField(String.localized("Your first name"), text: $userFirstName)
+                .textContentType(.givenName)
+                .textInputAutocapitalization(.words)
+                .autocorrectionDisabled()
+        } footer: {
+            Text("Used for your greeting on Home — leave blank for a plain \"Good morning\".")
         }
     }
 

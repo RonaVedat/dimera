@@ -13,13 +13,19 @@ struct PersonalizeStepView: View {
     var progress: Double?
     var stepLabel: String?
     var onBack: (() -> Void)?
+    @AppStorage("userFirstName") private var userFirstName = ""
+
+    private var trimmedFirstName: String {
+        userFirstName.trimmingCharacters(in: .whitespacesAndNewlines)
+    }
 
     var body: some View {
         OnboardingScaffold(
             progress: progress,
             stepLabel: stepLabel,
             onBack: onBack,
-            primaryTitle: (selectedGoals.isEmpty && selectedProfile == nil) ? String.localized("Skip for now") : String.localized("Continue"),
+            primaryTitle: (selectedGoals.isEmpty && selectedProfile == nil && trimmedFirstName.isEmpty)
+                ? String.localized("Skip for now") : String.localized("Continue"),
             primaryAction: next
         ) {
             VStack(alignment: .leading, spacing: 28) {
@@ -31,9 +37,26 @@ struct PersonalizeStepView: View {
                     .fixedSize(horizontal: false, vertical: true)
                     .accessibilityAddTraits(.isHeader)
 
+                nameSection
                 goalsSection
                 profileSection
             }
+        }
+    }
+
+    private var nameSection: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            sectionHeader(String.localized("What should we call you?"), subtitle: String.localized("Optional — used for your greeting."))
+
+            TextField(String.localized("Your first name"), text: $userFirstName)
+                .textContentType(.givenName)
+                .textInputAutocapitalization(.words)
+                .autocorrectionDisabled()
+                .font(.subheadline.weight(.medium))
+                .foregroundStyle(MonetaColor.textPrimary)
+                .padding(.horizontal, 16)
+                .padding(.vertical, 12)
+                .background(MonetaColor.cardElevated, in: RoundedRectangle(cornerRadius: MonetaMetrics.tileRadius, style: .continuous))
         }
     }
 

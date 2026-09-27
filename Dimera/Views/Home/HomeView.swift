@@ -6,6 +6,7 @@ import SwiftUI
 struct HomeView: View {
     @EnvironmentObject private var store: FinanceStore
     @Binding var selection: AppTab
+    @AppStorage("userFirstName") private var userFirstName = ""
 
     @State private var period: ChartPeriod = .month
     @State private var selectedIndex: Int?
@@ -112,12 +113,29 @@ struct HomeView: View {
         return hasCashFlow ? String.localized("Includes a balance change") : String.localized("Balance change")
     }
 
-    private var greeting: String {
+    /// Paired with a name line below it — kept as its own localized key
+    /// (with the trailing comma baked in) rather than composed at runtime,
+    /// so existing translations of this exact phrase aren't orphaned.
+    private var greetingWithName: String {
         switch Calendar.current.component(.hour, from: Date()) {
         case 5..<12: return String.localized("Good morning,")
         case 12..<18: return String.localized("Good afternoon,")
         default: return String.localized("Good evening,")
         }
+    }
+
+    /// No name on file yet — a plain greeting stands alone as the one
+    /// header line, rather than a comma dangling with nothing after it.
+    private var greetingAlone: String {
+        switch Calendar.current.component(.hour, from: Date()) {
+        case 5..<12: return String.localized("Good morning")
+        case 12..<18: return String.localized("Good afternoon")
+        default: return String.localized("Good evening")
+        }
+    }
+
+    private var trimmedFirstName: String {
+        userFirstName.trimmingCharacters(in: .whitespacesAndNewlines)
     }
 
     private var monthName: String {
@@ -225,12 +243,18 @@ struct HomeView: View {
     private var header: some View {
         HStack(alignment: .top) {
             VStack(alignment: .leading, spacing: 2) {
-                Text(greeting)
-                    .font(.subheadline)
-                    .foregroundStyle(MonetaColor.textSecondary)
-                Text("Vedat")
-                    .font(.title2.weight(.bold))
-                    .foregroundStyle(MonetaColor.textPrimary)
+                if trimmedFirstName.isEmpty {
+                    Text(greetingAlone)
+                        .font(.title2.weight(.bold))
+                        .foregroundStyle(MonetaColor.textPrimary)
+                } else {
+                    Text(greetingWithName)
+                        .font(.subheadline)
+                        .foregroundStyle(MonetaColor.textSecondary)
+                    Text(trimmedFirstName)
+                        .font(.title2.weight(.bold))
+                        .foregroundStyle(MonetaColor.textPrimary)
+                }
             }
             Spacer()
             Button {
@@ -240,10 +264,17 @@ struct HomeView: View {
                     .fill(MonetaColor.cardElevated)
                     .frame(width: 36, height: 36)
                     .overlay {
-                        Text("V")
-                            .font(.subheadline.weight(.bold))
-                            .foregroundStyle(MonetaColor.accent)
+                        if let initial = trimmedFirstName.first {
+                            Text(String(initial).uppercased())
+                                .font(.subheadline.weight(.bold))
+                                .foregroundStyle(MonetaColor.accent)
+                        } else {
+                            Image(systemName: "person.fill")
+                                .font(.footnote.weight(.semibold))
+                                .foregroundStyle(MonetaColor.accent)
+                        }
                     }
+                    .contentShape(Circle())
             }
             .accessibilityLabel("Account and settings")
         }
@@ -502,6 +533,10 @@ struct HomeView: View {
                         .shadow(color: .black.opacity(0.25), radius: 10, y: 4)
                 }
             }
+            // Without this, only the glyph's own drawn pixels are tappable
+            // — the surrounding circle looks like part of the button but
+            // doesn't respond. This makes the whole circle one hit target.
+            .contentShape(Circle())
         }
         .buttonStyle(.plain)
         .padding(.trailing, 20)
